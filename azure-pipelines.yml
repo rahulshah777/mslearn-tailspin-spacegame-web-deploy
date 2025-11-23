@@ -12,7 +12,7 @@ stages:
       - job: "Build"
         displayName: "Build job"
         pool:
-          vmImage: "local-linux"
+          name: "local-linux" # 👈 use the self-hosted pool name here
           demands:
             - npm
 
@@ -78,7 +78,7 @@ stages:
     jobs:
       - deployment: Deploy
         pool:
-          vmImage: "local-linux"
+          name: "local-linux" # 👈 same here
         environment: dev
         variables:
           - group: Release
