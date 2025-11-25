@@ -20,7 +20,7 @@ stages:
       - job: "Build"
         displayName: "Build job"
         pool:
-          vmImage: "ubuntu-20.04"
+          vmImage: "ubuntu-latest"
           demands:
             - npm
 
@@ -86,7 +86,7 @@ stages:
     jobs:
       - deployment: Deploy
         pool:
-          vmImage: "ubuntu-20.04"
+          vmImage: "ubuntu-latest"
         environment: dev
         variables:
           - group: Release
@@ -106,11 +106,10 @@ stages:
   - stage: "Test"
     displayName: "Deploy to the test environment"
     dependsOn: Dev
-    #condition: eq(variables['Build.Reason'], 'Schedule')
     jobs:
       - deployment: Deploy
         pool:
-          vmImage: "ubuntu-20.04"
+          vmImage: "ubuntu-latest"
         environment: test
         variables:
           - group: "Release"
