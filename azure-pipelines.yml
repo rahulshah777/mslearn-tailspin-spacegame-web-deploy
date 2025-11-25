@@ -2,61 +2,71 @@ trigger:
   - "*"
 
 variables:
-  buildConfiguration: "Release"
-  solution: "src/ADOGenerator/ADOGenerator.csproj"
+  - group: Release                  # 👈 pulls in WebAppNameDev/Test/Staging
+  - name: buildConfiguration
+    value: "Release"
+  - name: solution
+    value: "src/ADOGenerator.sln"
+
+schedules:
+- cron: "0 3 * * *"
+  displayName: "Build every day at 3 A.M."
+  branches:
+    include:
+    - release
+  always: false
 
 stages:
-- stage: Build
-  displayName: "Build ADOGenerator Console App"
+- stage: "Build"
+  displayName: "Build the ADOGenerator solution"
   jobs:
-  - job: BuildJob
+  - job: "Build"
+    displayName: "Build job"
     pool:
-      vmImage: ubuntu-latest
+      vmImage: "ubuntu-latest"
+
+    variables:
+      dotnetSdkVersion: "8.0.x"
 
     steps:
-    - checkout: self
-    
     - task: UseDotNet@2
+      displayName: "Use .NET SDK $(dotnetSdkVersion)"
       inputs:
-        packageType: sdk
-        version: "8.0.x"
-    
+        version: "$(dotnetSdkVersion)"
+
     - task: DotNetCoreCLI@2
-      displayName: Restore
+      displayName: "Restore project dependencies"
       inputs:
-        command: restore
+        command: "restore"
         projects: "$(solution)"
-    
+
     - task: DotNetCoreCLI@2
-      displayName: Build
+      displayName: "Build the project - $(buildConfiguration)"
       inputs:
-        command: build
+        command: "build"
         projects: "$(solution)"
-        arguments: "--configuration $(buildConfiguration)"
-    
+        arguments: "--no-restore --configuration $(buildConfiguration)"
+
     - task: DotNetCoreCLI@2
-      displayName: Publish
+      displayName: "Publish ADOGenerator - $(buildConfiguration)"
       inputs:
-        command: publish
-        projects: "$(solution)"
-        arguments: "--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)"
+        command: "publish"
+        projects: "src/ADOGenerator/ADOGenerator.csproj"
+        publishWebProjects: false
+        arguments: "--no-build --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/$(buildConfiguration)"
         zipAfterPublish: true
 
     - publish: "$(Build.ArtifactStagingDirectory)"
       artifact: drop
 
-
-# ===========================
-# DEV STAGE
-# ===========================
-- stage: Dev
+- stage: "Dev"
   displayName: "Deploy to Dev App Service"
   dependsOn: Build
   condition: succeeded()
   jobs:
   - deployment: DevDeploy
     displayName: "Deploy to Dev environment"
-    environment: "dev"       # Azure Pipelines environment
+    environment: "dev"
     strategy:
       runOnce:
         deploy:
@@ -72,10 +82,7 @@ stages:
               appName: "$(WebAppNameDev)"
               package: "$(Pipeline.Workspace)/drop/**/*.zip"
 
-# ===========================
-# TEST STAGE
-# ===========================
-- stage: Test
+- stage: "Test"
   displayName: "Deploy to Test App Service"
   dependsOn: Dev
   condition: succeeded()
@@ -96,30 +103,4 @@ stages:
               azureSubscription: "Resource Manager - Tailspin - Space Game"
               appType: "webAppLinux"
               appName: "$(WebAppNameTest)"
-              package: "$(Pipeline.Workspace)/drop/**/*.zip"
-
-# ===========================
-# STAGING STAGE
-# ===========================
-- stage: Staging
-  displayName: "Deploy to Staging App Service"
-  dependsOn: Test
-  condition: succeeded()
-  jobs:
-  - deployment: StagingDeploy
-    displayName: "Deploy to Staging environment"
-    environment: "staging"
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - download: current
-            artifact: drop
-
-          - task: AzureWebApp@1
-            displayName: "Deploy to Staging Web App"
-            inputs:
-              azureSubscription: "Resource Manager - Tailspin - Space Game"
-              appType: "webAppLinux"
-              appName: "$(WebAppNameStaging)"
               package: "$(Pipeline.Workspace)/drop/**/*.zip"
