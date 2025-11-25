@@ -1,9 +1,12 @@
 trigger:
-- "*"
+  - "*"
 
 variables:
-  buildConfiguration: "Release"
-  solution: "src/ADOGenerator.sln"
+  - group: Release                  # 👈 pulls in WebAppNameDev/Test/Staging
+  - name: buildConfiguration
+    value: "Release"
+  - name: solution
+    value: "src/ADOGenerator.sln"
 
 schedules:
 - cron: "0 3 * * *"
@@ -79,7 +82,6 @@ stages:
               appName: "$(WebAppNameDev)"
               package: "$(Pipeline.Workspace)/drop/**/*.zip"
 
-
 - stage: "Test"
   displayName: "Deploy to Test App Service"
   dependsOn: Dev
@@ -102,4 +104,3 @@ stages:
               appType: "webAppLinux"
               appName: "$(WebAppNameTest)"
               package: "$(Pipeline.Workspace)/drop/**/*.zip"
-
