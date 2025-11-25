@@ -57,35 +57,49 @@ stages:
       artifact: drop
 
 - stage: "Dev"
-  displayName: "Dev stage (placeholder deploy)"
+  displayName: "Deploy to Dev App Service"
   dependsOn: Build
   condition: succeeded()
   jobs:
-  - job: "DevJob"
-    displayName: "Simulated Dev deploy"
-    pool:
-      vmImage: "ubuntu-latest"
-    steps:
-    - download: current
-      artifact: drop
-    - script: |
-        echo "Simulating deployment of ADOGenerator to Dev environment..."
-        ls -R $(Pipeline.Workspace)/drop
-      displayName: "Show published artifacts for Dev"
+  - deployment: DevDeploy
+    displayName: "Deploy to Dev environment"
+    environment: "dev"
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+
+          - task: AzureWebApp@1
+            displayName: "Deploy to Dev Web App"
+            inputs:
+              azureSubscription: "Resource Manager - Tailspin - Space Game"
+              appType: "webAppLinux"
+              appName: "$(WebAppNameDev)"
+              package: "$(Pipeline.Workspace)/drop/**/*.zip"
+
 
 - stage: "Test"
-  displayName: "Test stage (placeholder deploy)"
+  displayName: "Deploy to Test App Service"
   dependsOn: Dev
   condition: succeeded()
   jobs:
-  - job: "TestJob"
-    displayName: "Simulated Test deploy"
-    pool:
-      vmImage: "ubuntu-latest"
-    steps:
-    - download: current
-      artifact: drop
-    - script: |
-        echo "Simulating deployment of ADOGenerator to Test environment..."
-        ls -R $(Pipeline.Workspace)/drop
-      displayName: "Show published artifacts for Test"
+  - deployment: TestDeploy
+    displayName: "Deploy to Test environment"
+    environment: "test"
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+
+          - task: AzureWebApp@1
+            displayName: "Deploy to Test Web App"
+            inputs:
+              azureSubscription: "Resource Manager - Tailspin - Space Game"
+              appType: "webAppLinux"
+              appName: "$(WebAppNameTest)"
+              package: "$(Pipeline.Workspace)/drop/**/*.zip"
+
