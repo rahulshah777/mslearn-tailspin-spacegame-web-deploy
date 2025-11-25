@@ -1,26 +1,38 @@
+# ===========================
+# Triggers & variables
+# ===========================
 trigger:
-  - "*"
+  branches:
+    include:
+      - main
 
-variables:
-  - group: Release                  # 👈 pulls in WebAppNameDev/Test/Staging
-  - name: buildConfiguration
-    value: "Release"
-  - name: solution
-    value: "src/ADOGenerator.sln"
-
+# Optional scheduled nightly build
 schedules:
 - cron: "0 3 * * *"
   displayName: "Build every day at 3 A.M."
   branches:
     include:
-    - release
+      - main
   always: false
 
+variables:
+  # Pull variable group "Release" from Library
+  - group: Release           # contains WebAppNameDev/Test/Staging
+
+  # Local variables
+  - name: buildConfiguration
+    value: "Release"
+  - name: webProject
+    value: "src/Tailspin.SpaceGame.Web/Tailspin.SpaceGame.Web.csproj"
+
+# ===========================
+# BUILD STAGE
+# ===========================
 stages:
-- stage: "Build"
-  displayName: "Build the ADOGenerator solution"
+- stage: Build
+  displayName: "Build, test, and publish Space Game web app"
   jobs:
-  - job: "Build"
+  - job: BuildJob
     displayName: "Build job"
     pool:
       vmImage: "ubuntu-latest"
@@ -29,44 +41,66 @@ stages:
       dotnetSdkVersion: "8.0.x"
 
     steps:
+    - checkout: self
+      clean: true
+
     - task: UseDotNet@2
       displayName: "Use .NET SDK $(dotnetSdkVersion)"
       inputs:
         version: "$(dotnetSdkVersion)"
 
+    # Restore
     - task: DotNetCoreCLI@2
-      displayName: "Restore project dependencies"
+      displayName: "Restore web project"
       inputs:
         command: "restore"
-        projects: "$(solution)"
+        projects: "$(webProject)"
 
+    # Build
     - task: DotNetCoreCLI@2
-      displayName: "Build the project - $(buildConfiguration)"
+      displayName: "Build web project - $(buildConfiguration)"
       inputs:
         command: "build"
-        projects: "$(solution)"
+        projects: "$(webProject)"
         arguments: "--no-restore --configuration $(buildConfiguration)"
 
+    # Run tests (Tailspin.SpaceGame.Web.Tests)
     - task: DotNetCoreCLI@2
-      displayName: "Publish ADOGenerator - $(buildConfiguration)"
+      displayName: "Run unit tests"
+      inputs:
+        command: "test"
+        projects: "**/*Tests/*.csproj"
+        arguments: "--configuration $(buildConfiguration) --no-build"
+
+    # Publish web app as ZIP for App Service
+    - task: DotNetCoreCLI@2
+      displayName: "Publish Space Game web app"
       inputs:
         command: "publish"
-        projects: "src/ADOGenerator/ADOGenerator.csproj"
+        projects: "$(webProject)"
         publishWebProjects: false
-        arguments: "--no-build --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/$(buildConfiguration)"
+        arguments: "--no-build --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)"
         zipAfterPublish: true
 
-    - publish: "$(Build.ArtifactStagingDirectory)"
-      artifact: drop
+    # Publish artifact named "drop"
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish artifact"
+      inputs:
+        PathtoPublish: "$(Build.ArtifactStagingDirectory)"
+        ArtifactName: "drop"
+        publishLocation: "Container"
 
-- stage: "Dev"
+# ===========================
+# DEV STAGE
+# ===========================
+- stage: Dev
   displayName: "Deploy to Dev App Service"
   dependsOn: Build
   condition: succeeded()
   jobs:
   - deployment: DevDeploy
     displayName: "Deploy to Dev environment"
-    environment: "dev"
+    environment: "dev"       # Azure Pipelines environment
     strategy:
       runOnce:
         deploy:
@@ -82,7 +116,10 @@ stages:
               appName: "$(WebAppNameDev)"
               package: "$(Pipeline.Workspace)/drop/**/*.zip"
 
-- stage: "Test"
+# ===========================
+# TEST STAGE
+# ===========================
+- stage: Test
   displayName: "Deploy to Test App Service"
   dependsOn: Dev
   condition: succeeded()
@@ -103,4 +140,30 @@ stages:
               azureSubscription: "Resource Manager - Tailspin - Space Game"
               appType: "webAppLinux"
               appName: "$(WebAppNameTest)"
+              package: "$(Pipeline.Workspace)/drop/**/*.zip"
+
+# ===========================
+# STAGING STAGE
+# ===========================
+- stage: Staging
+  displayName: "Deploy to Staging App Service"
+  dependsOn: Test
+  condition: succeeded()
+  jobs:
+  - deployment: StagingDeploy
+    displayName: "Deploy to Staging environment"
+    environment: "staging"
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+
+          - task: AzureWebApp@1
+            displayName: "Deploy to Staging Web App"
+            inputs:
+              azureSubscription: "Resource Manager - Tailspin - Space Game"
+              appType: "webAppLinux"
+              appName: "$(WebAppNameStaging)"
               package: "$(Pipeline.Workspace)/drop/**/*.zip"
